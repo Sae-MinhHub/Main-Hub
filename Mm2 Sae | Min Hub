@@ -468,5 +468,11 @@ InfoTab:Button({
     Title = "Sae | Minh Hub: This script was written by the same person named Minh and likes Sae in Blue Lock so the script name is Sae | Minh Hub",
     Icon = "skull",
     Color = Color3.fromRGB(0, 132, 255),
+    Callback = function()
+        -- Có thể để trống hoặc show thông báo
+        WindUI:Notify({
+            Title = "Info",
+            Content = "Script được viết bởi Minh, thích Sae trong Blue Lock."
+        })
     end
 })
