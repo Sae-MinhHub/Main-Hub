@@ -150,7 +150,7 @@ coroutine.wrap(updateMurderer)()
 --------------------------------------------------
 --// Teleport / Movement Helpers with Tween + NoClip
 --------------------------------------------------
-local function findNearestCoinContainer(pos)
+local function findFurthestCoinContainer(pos)
     local now = tick()
     if now - lastCoinUpdate > CACHE_DURATION or #coinCache == 0 then
         coinCache = {}
@@ -163,17 +163,17 @@ local function findNearestCoinContainer(pos)
         end
         lastCoinUpdate = now
     end
-    local nearest, dist = nil, math.huge
+    local furthest, dist = nil, -math.huge
     for _, c in ipairs(coinCache) do
         if c.Parent then
             local d = (pos - c.Position).Magnitude
-            if d < dist then
+            if d > dist then
                 dist = d
-                nearest = c
+                furthest = c
             end
         end
     end
-    return nearest
+    return furthest
 end
 
 local function noclipTweenTeleportToCoin()
@@ -183,7 +183,7 @@ local function noclipTweenTeleportToCoin()
     if not char then isTeleporting = false return false end
     local root = char:FindFirstChild("HumanoidRootPart")
     if not root then isTeleporting = false return false end
-    local coin = findNearestCoinContainer(root.Position)
+    local coin = findFurthestCoinContainer(root.Position)
     if not coin then isTeleporting = false return false end
 
     -- NoClip On
@@ -193,7 +193,7 @@ local function noclipTweenTeleportToCoin()
         end
     end
 
-    local tweenInfo = TweenInfo.new(1.5, Enum.EasingStyle.Linear)
+    local tweenInfo = TweenInfo.new(0.5, Enum.EasingStyle.Linear) -- 0.5 giây để bay đến coin
     local goal = {CFrame = CFrame.new(coin.Position + Vector3.new(0, 2, 0))}
     local tween = TweenService:Create(root, tweenInfo, goal)
     tween:Play()
@@ -225,6 +225,7 @@ MainTab:Toggle({
                     local c = player.Character
                     if c and c:FindFirstChild("HumanoidRootPart") then
                         noclipTweenTeleportToCoin()
+                        task.wait(1) -- nghỉ 1 giây mỗi lần
                     end
                 end
             end)
