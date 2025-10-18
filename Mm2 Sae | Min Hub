@@ -1,0 +1,472 @@
+--// WindUI Loader
+local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
+
+--// Services
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+local Workspace = game:GetService("Workspace")
+local UserInputService = game:GetService("UserInputService")
+
+local player = Players.LocalPlayer
+local camera = Workspace.CurrentCamera
+
+--// Global flags
+getgenv().EspAll = false
+getgenv().autoFarmEnabled = false
+
+local isTeleporting = false
+local connection = nil
+local coinCache = {}
+local lastCoinUpdate = 0
+local CACHE_DURATION = 1
+
+local currentMurderer = nil
+local killerAllActive = false
+local killerAllConnection = nil
+
+--------------------------------------------------
+--// UI Setup
+--------------------------------------------------
+local Window = WindUI:CreateWindow({
+    Title = "Sae | Minh Hub",
+    Icon = "rbxassetid://124009325876169",
+    Folder = "SaeMinhHub",
+    Author = "MinhCodeHub",
+    NewElements = true
+})
+
+local MainTab = Window:Tab({Title = "Main", Icon = "bolt"})
+local MurderTab = Window:Tab({Title = "Murderer / Police", Icon = "skull"})
+local InfoTab = Window:Tab({Title = "Info", Icon = "skull"})
+
+--------------------------------------------------
+--// ESP Handling
+--------------------------------------------------
+local ESPFolder = Instance.new("Folder", game.CoreGui)
+ESPFolder.Name = "ESP_Holder"
+
+local function AddESP(plr)
+    if ESPFolder:FindFirstChild(plr.Name .. "_ESP") then return end
+    local billboard = Instance.new("BillboardGui")
+    billboard.Name = plr.Name .. "_ESP"
+    billboard.AlwaysOnTop = true
+    billboard.Size = UDim2.new(0, 200, 0, 50)
+    billboard.ExtentsOffset = Vector3.new(0, 3, 0)
+    billboard.Enabled = false
+    billboard.Parent = ESPFolder
+
+    local text = Instance.new("TextLabel")
+    text.Text = plr.Name
+    text.BackgroundTransparency = 1
+    text.Size = UDim2.new(1, 0, 1, 0)
+    text.Font = Enum.Font.FredokaOne
+    text.TextStrokeTransparency = 0
+    text.TextSize = 20
+    text.TextStrokeColor3 = Color3.new(0,0,0)
+    text.Parent = billboard
+
+    coroutine.wrap(function()
+        while plr.Parent do
+            task.wait(0.1)
+            pcall(function()
+                local char = plr.Character
+                local bp = plr.Backpack
+                billboard.Adornee = char and char:FindFirstChild("Head")
+                local hasKnife = (char and char:FindFirstChild("Knife")) or (bp and bp:FindFirstChild("Knife"))
+                local hasGun = (char and char:FindFirstChild("Gun")) or (bp and bp:FindFirstChild("Gun"))
+                if hasKnife then
+                    text.TextColor3 = Color3.new(1, 0, 0)
+                elseif hasGun then
+                    text.TextColor3 = Color3.new(0, 0, 1)
+                else
+                    text.TextColor3 = Color3.new(0, 1, 0)
+                end
+                billboard.Enabled = getgenv().EspAll
+            end)
+        end
+        if billboard then billboard:Destroy() end
+    end)()
+end
+
+local function updateAllESP()
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= player then
+            AddESP(p)
+        end
+    end
+end
+
+-- Initialize ESP
+updateAllESP()
+Players.PlayerAdded:Connect(function(p)
+    if p ~= player then AddESP(p) end
+end)
+Players.PlayerRemoving:Connect(function(p)
+    local bb = ESPFolder:FindFirstChild(p.Name .. "_ESP")
+    if bb then bb:Destroy() end
+end)
+
+task.spawn(function()
+    while true do
+        updateAllESP()
+        task.wait(2)
+    end
+end)
+
+MainTab:Toggle({
+    Title = "ESP (All Roles)",
+    Default = false,
+    Callback = function(state)
+        getgenv().EspAll = state
+        for _, bb in ipairs(ESPFolder:GetChildren()) do
+            if bb:IsA("BillboardGui") then
+                bb.Enabled = state
+            end
+        end
+    end
+})
+
+--------------------------------------------------
+--// Murderer Detection
+--------------------------------------------------
+local function updateMurderer()
+    while true do
+        currentMurderer = nil
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p.Character then
+                local hasKnife = p.Backpack:FindFirstChild("Knife") or p.Character:FindFirstChild("Knife")
+                if hasKnife then
+                    currentMurderer = p
+                    break
+                end
+            end
+        end
+        task.wait(1)
+    end
+end
+coroutine.wrap(updateMurderer)()
+
+--------------------------------------------------
+--// Teleport / Movement Helpers with Tween + NoClip
+--------------------------------------------------
+local function findNearestCoinContainer(pos)
+    local now = tick()
+    if now - lastCoinUpdate > CACHE_DURATION or #coinCache == 0 then
+        coinCache = {}
+        for _, obj in ipairs(Workspace:GetDescendants()) do
+            if (obj:IsA("BasePart") or obj:IsA("MeshPart")) and
+               (obj.Name:lower():find("coin") or obj.Name:lower():find("money") or
+                obj.Name:lower():find("dollar") or obj.Name:lower():find("cash")) then
+                table.insert(coinCache, obj)
+            end
+        end
+        lastCoinUpdate = now
+    end
+    local nearest, dist = nil, math.huge
+    for _, c in ipairs(coinCache) do
+        if c.Parent then
+            local d = (pos - c.Position).Magnitude
+            if d < dist then
+                dist = d
+                nearest = c
+            end
+        end
+    end
+    return nearest
+end
+
+local function noclipTweenTeleportToCoin()
+    if isTeleporting then return false end
+    isTeleporting = true
+    local char = player.Character
+    if not char then isTeleporting = false return false end
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if not root then isTeleporting = false return false end
+    local coin = findNearestCoinContainer(root.Position)
+    if not coin then isTeleporting = false return false end
+
+    -- NoClip On
+    for _, part in ipairs(char:GetDescendants()) do
+        if part:IsA("BasePart") then
+            part.CanCollide = false
+        end
+    end
+
+    local tweenInfo = TweenInfo.new(1.5, Enum.EasingStyle.Linear)
+    local goal = {CFrame = CFrame.new(coin.Position + Vector3.new(0, 2, 0))}
+    local tween = TweenService:Create(root, tweenInfo, goal)
+    tween:Play()
+    tween.Completed:Wait()
+
+    -- NoClip Off (Optional: keep on if muốn)
+    for _, part in ipairs(char:GetDescendants()) do
+        if part:IsA("BasePart") then
+            part.CanCollide = true
+        end
+    end
+
+    isTeleporting = false
+    return true
+end
+
+--------------------------------------------------
+--// Auto Farm Coin Toggle
+--------------------------------------------------
+MainTab:Toggle({
+    Title = "Auto Farm Coin",
+    Default = false,
+    Callback = function(state)
+        getgenv().autoFarmEnabled = state
+        if state then
+            if connection then connection:Disconnect() end
+            connection = RunService.Heartbeat:Connect(function()
+                if getgenv().autoFarmEnabled and not isTeleporting then
+                    local c = player.Character
+                    if c and c:FindFirstChild("HumanoidRootPart") then
+                        noclipTweenTeleportToCoin()
+                    end
+                end
+            end)
+        else
+            if connection then
+                connection:Disconnect()
+                connection = nil
+            end
+        end
+    end
+})
+
+MainTab:Button({
+    Title = "Fly to Coin",
+    Icon = "navigation",
+    Color = Color3.fromRGB(0, 132, 255),
+    Callback = function()
+        noclipTweenTeleportToCoin()
+        WindUI:Notify({Title = "Teleport", Content = "Đã teleport đến coin!"})
+    end
+})
+
+--------------------------------------------------
+--// NoClip Toggle
+--------------------------------------------------
+local noclipEnabled = false
+local noclipConnection = nil
+
+MainTab:Toggle({
+    Title = "NoClip",
+    Default = false,
+    Callback = function(state)
+        noclipEnabled = state
+        if noclipConnection then
+            noclipConnection:Disconnect()
+            noclipConnection = nil
+        end
+        if noclipEnabled then
+            noclipConnection = RunService.Stepped:Connect(function()
+                local char = player.Character
+                if char then
+                    for _, part in ipairs(char:GetDescendants()) do
+                        if part:IsA("BasePart") then
+                            part.CanCollide = false
+                        end
+                    end
+                end
+            end)
+        end
+    end
+})
+
+--------------------------------------------------
+--// Shoot Murderer Button Logic (Auto Aim)
+--------------------------------------------------
+local function shootMurderer()
+    local char = player.Character
+    if not char or not char:FindFirstChild("HumanoidRootPart") then
+        WindUI:Notify({Title = "Error", Content = "Không tìm thấy nhân vật của bạn!"})
+        return
+    end
+    local myRoot = char.HumanoidRootPart
+
+    local murderer = currentMurderer
+    if not murderer or not murderer.Character or not murderer.Character:FindFirstChild("HumanoidRootPart") then
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= player and p.Character then
+                if p.Backpack:FindFirstChild("Knife") or p.Character:FindFirstChild("Knife") then
+                    murderer = p
+                    break
+                end
+            end
+        end
+    end
+
+    if not murderer or not murderer.Character or not murderer.Character:FindFirstChild("HumanoidRootPart") then
+        WindUI:Notify({Title = "Error", Content = "Không tìm thấy Murderer trong bản đồ!"})
+        return
+    end
+
+    local murdererRoot = murderer.Character.HumanoidRootPart
+    local dist = (myRoot.Position - murdererRoot.Position).Magnitude
+
+    if dist > 150 then
+        WindUI:Notify({Title = "Out of Range", Content = "Murderer ở quá xa ("..math.floor(dist).." studs)!"})
+        return
+    end
+
+    camera.CFrame = CFrame.new(camera.CFrame.Position, murdererRoot.Position)
+
+    local gun = char:FindFirstChildOfClass("Tool")
+    if not gun then
+        local bp = player:FindFirstChild("Backpack")
+        if bp then
+            for _, t in ipairs(bp:GetChildren()) do
+                if t:IsA("Tool") and (t.Name:lower():find("gun") or t.Name:lower():find("revolver")) then
+                    char.Humanoid:EquipTool(t)
+                    gun = t
+                    break
+                end
+            end
+        end
+    end
+
+    if not gun then
+        WindUI:Notify({Title = "Error", Content = "Không tìm thấy súng để bắn!"})
+        return
+    end
+
+    pcall(function() gun:Activate() end)
+
+    WindUI:Notify({
+        Title = "Shoot",
+        Content = "Đã bắn Murderer ("..murderer.Name..") từ khoảng cách "..math.floor(dist).." studs!"
+    })
+end
+
+MurderTab:Button({
+    Title = "Shoot Murderer (Auto Aim)",
+    Callback = shootMurderer
+})
+
+--------------------------------------------------
+--// Kill All Logic
+--------------------------------------------------
+MurderTab:Toggle({
+    Title = "Kill All (Auto Teleport + Shoot)",
+    Default = false,
+    Callback = function(state)
+        if state then
+            if killerAllConnection then killerAllConnection:Disconnect() end
+            killerAllActive = true
+            killerAllConnection = RunService.Heartbeat:Connect(function()
+                if not killerAllActive or isTeleporting then return end
+                local myRoot = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+                if not myRoot then return end
+                for _, p in ipairs(Players:GetPlayers()) do
+                    if p ~= player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+                        local dist = (myRoot.Position - p.Character.HumanoidRootPart.Position).Magnitude
+                        if dist <= 250 then
+                            myRoot.CFrame = p.Character.HumanoidRootPart.CFrame * CFrame.new(0, 0, 1)
+                            camera.CFrame = CFrame.new(camera.CFrame.Position, p.Character.HumanoidRootPart.Position)
+                            local t = player.Character:FindFirstChildOfClass("Tool")
+                            if t then t:Activate() end
+                            task.wait(0.3)
+                        end
+                    end
+                end
+            end)
+        else
+            if killerAllConnection then killerAllConnection:Disconnect() end
+            killerAllActive = false
+            killerAllConnection = nil
+        end
+    end
+})
+
+--------------------------------------------------
+--// Get Gun Button
+--------------------------------------------------
+local function findNearestGunDrop()
+    local list = {}
+    for _, obj in ipairs(Workspace:GetDescendants()) do
+        if (obj:IsA("BasePart") or obj:IsA("MeshPart")) and obj.Name == "GunDrop" then
+            table.insert(list, obj)
+        end
+    end
+    if #list == 0 then
+        return nil
+    end
+    local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+    if not root then
+        return list[1]
+    end
+    local nearest = list[1]
+    local bestDist = (root.Position - nearest.Position).Magnitude
+    for i = 2, #list do
+        local d = (root.Position - list[i].Position).Magnitude
+        if d < bestDist then
+            bestDist = d
+            nearest = list[i]
+        end
+    end
+    return nearest
+end
+
+MurderTab:Button({
+    Title = "Get Gun",
+    Callback = function()
+        local gd = findNearestGunDrop()
+        if not gd then
+            WindUI:Notify({Title = "Error", Content = "Không tìm thấy GunDrop!"})
+        else
+            -- Dùng tween để teleport tới gundrop
+            if isTeleporting then return end
+            isTeleporting = true
+            local char = player.Character
+            if not char or not char:FindFirstChild("HumanoidRootPart") then
+                WindUI:Notify({Title = "Error", Content = "Không tìm thấy nhân vật của bạn!"})
+                isTeleporting = false
+                return
+            end
+            local root = char.HumanoidRootPart
+
+            for _, part in ipairs(char:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    part.CanCollide = false
+                end
+            end
+
+            local tweenInfo = TweenInfo.new(1.2, Enum.EasingStyle.Linear)
+            local goal = {CFrame = gd.CFrame + Vector3.new(0, 2, 0)}
+            local tween = TweenService:Create(root, tweenInfo, goal)
+            tween:Play()
+            tween.Completed:Wait()
+
+            for _, part in ipairs(char:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    part.CanCollide = true
+                end
+            end
+
+            isTeleporting = false
+            WindUI:Notify({Title = "Success", Content = "Đã tới GunDrop!"})
+        end
+    end
+})
+
+InfoTab:Button({
+    Title = "Discord",
+    Icon = "skull", -- icon tùy chọn
+    Color = Color3.fromRGB(0, 132, 255),
+    Callback = function()
+        local textToCopy = "disccord" -- thay bằng text bạn muốn
+        setclipboard(textToCopy)
+        print("Đã copy:", textToCopy)
+    end
+})
+
+InfoTab:Button({
+    Title = "Sae | Minh Hub: This script was written by the same person named Minh and likes Sae in Blue Lock so the script name is Sae | Minh Hub",
+    Icon = "skull",
+    Color = Color3.fromRGB(0, 132, 255),
+    end
+})
