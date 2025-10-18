@@ -193,7 +193,7 @@ local function noclipTweenTeleportToCoin()
         end
     end
 
-    local tweenInfo = TweenInfo.new(0.5, Enum.EasingStyle.Linear) -- 0.5 giây để bay đến coin
+    local tweenInfo = TweenInfo.new(5, Enum.EasingStyle.Linear) -- 0.5 giây để bay đến coin
     local goal = {CFrame = CFrame.new(coin.Position + Vector3.new(0, 2, 0))}
     local tween = TweenService:Create(root, tweenInfo, goal)
     tween:Play()
