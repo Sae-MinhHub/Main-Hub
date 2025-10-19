@@ -518,9 +518,8 @@ humanoid.WalkSpeed = 40
 getgenv().autoFarmEnabled = false
 local farming = false
 local platform = nil
-local noclipConnection = nil
 
--- Tạo nền ảo
+-- Tạo nền ảo nếu chưa có
 local function createPlatform()
     if platform and platform.Parent then return end
 
@@ -535,12 +534,13 @@ local function createPlatform()
     platform.Parent = Workspace
 end
 
--- Di chuyển nền dưới chân người chơi
+-- Cập nhật vị trí nền ảo luôn nằm dưới chân người chơi, cách chân 3.5 studs để không kẹt
 local function updatePlatform()
     if not platform then return end
     local root = character:FindFirstChild("HumanoidRootPart")
     if root then
-        platform.Position = Vector3.new(root.Position.X, root.Position.Y - 3.1, root.Position.Z)
+        local pos = root.Position
+        platform.Position = Vector3.new(pos.X, pos.Y - 3.5, pos.Z)
     end
 end
 
@@ -568,23 +568,23 @@ local function getNearestCoin()
     return nearestCoin
 end
 
--- Di chuyển tới coin
+-- Di chuyển tới coin, nếu coin cao hơn, bay lên đủ để tới, sau đó di chuyển tới coin bằng MoveTo
 local function moveToCoin(coin)
     if not coin then return end
     local root = character:FindFirstChild("HumanoidRootPart")
     if not root then return end
 
-    -- Nếu coin ở cao hơn, teleport lên
-    if coin.Position.Y - root.Position.Y > 6 then
+    local heightDiff = coin.Position.Y - root.Position.Y
+    if heightDiff > 6 then
         root.CFrame = CFrame.new(root.Position.X, coin.Position.Y + 5, root.Position.Z)
         task.wait(0.15)
     end
 
     humanoid:MoveTo(coin.Position)
-    humanoid.MoveToFinished:Wait(2) -- chờ 2s hoặc đến khi xong
+    humanoid.MoveToFinished:Wait(2)
 end
 
--- Bật / tắt NoClip
+-- Bật / tắt NoClip bằng việc set CanCollide của từng part trong nhân vật
 local function setNoClip(state)
     local char = player.Character
     if not char then return end
@@ -596,9 +596,9 @@ local function setNoClip(state)
     end
 end
 
--- Toggle Auto Farm
+-- Auto Farm Toggle
 MainTab:Toggle({
-    Title = "Auto Farm Coin (Smart + NoClip + Safe)",
+    Title = "Auto Farm Coin (1s delay + NoClip + Platform)",
     Default = false,
     Callback = function(state)
         getgenv().autoFarmEnabled = state
@@ -606,7 +606,7 @@ MainTab:Toggle({
         if state and not farming then
             farming = true
             createPlatform()
-            setNoClip(true) -- bật noclip
+            setNoClip(true)
 
             task.spawn(function()
                 while getgenv().autoFarmEnabled do
@@ -621,15 +621,13 @@ MainTab:Toggle({
                         moveToCoin(coin)
                     end
 
-                    task.wait(0.25)
+                    task.wait(1) -- chờ 1 giây giữa mỗi lần đi
                 end
-                -- khi tắt auto farm thì tắt noclip và dọn platform
                 setNoClip(false)
                 if platform then platform:Destroy() end
                 farming = false
             end)
         elseif not state then
-            -- tắt auto farm, đảm bảo tắt noclip và dọn platform nếu lỡ còn
             setNoClip(false)
             if platform then platform:Destroy() end
             farming = false
