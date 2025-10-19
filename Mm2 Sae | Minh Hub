@@ -5,7 +5,7 @@ local player = game.Players.LocalPlayer
 local userInputService = game:GetService("UserInputService")
 local mouse = game:GetService("Players").LocalPlayer:GetMouse()
 
-local moveInterval = 10 -- Di chuyển chuột và nhấn phím mỗi 10 giây
+local moveInterval = 1140 -- Di chuyển chuột và nhấn phím mỗi 10 giây
 
 -- Hàm di chuyển chuột nhẹ
 local function moveMouse()
