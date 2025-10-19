@@ -9,8 +9,8 @@ local moveInterval = 10 -- Di chuyển chuột và nhấn phím mỗi 10 giây
 
 -- Hàm di chuyển chuột nhẹ
 local function moveMouse()
-    local randomX = math.random(-10, 10)
     local randomY = math.random(-10, 10)
+    local randomY = math.random(+10, 10)
     mouse.Move:Fire(randomX, randomY)
 end
 
