@@ -503,3 +503,70 @@ InfoTab:Button({
         })
     end
 })
+
+-- Auto Farm Coin - Safer Version Using Humanoid:MoveTo()
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+local RunService = game:GetService("RunService")
+
+local player = Players.LocalPlayer
+local character = player.Character or player.CharacterAdded:Wait()
+local humanoid = character:WaitForChild("Humanoid")
+
+getgenv().autoFarmEnabled = false
+local farming = false
+
+local function getNearestCoin()
+    local root = character:FindFirstChild("HumanoidRootPart")
+    if not root then return nil end
+
+    local nearestCoin = nil
+    local shortestDistance = math.huge
+
+    for _, obj in ipairs(Workspace:GetDescendants()) do
+        if (obj:IsA("BasePart") or obj:IsA("MeshPart")) and 
+            (obj.Name:lower():find("coin") or obj.Name:lower():find("money") or 
+             obj.Name:lower():find("cash") or obj.Name:lower():find("dollar")) then
+
+            local dist = (obj.Position - root.Position).Magnitude
+            if dist < shortestDistance then
+                shortestDistance = dist
+                nearestCoin = obj
+            end
+        end
+    end
+
+    return nearestCoin
+end
+
+local function moveToCoin(coin)
+    if not coin or not character or not character:FindFirstChild("HumanoidRootPart") then return end
+    humanoid:MoveTo(coin.Position)
+    humanoid.MoveToFinished:Wait()
+end
+
+MainTab:Toggle({
+    Title = "Auto Farm Coin (Safe MoveTo)",
+    Default = false,
+    Callback = function(state)
+        getgenv().autoFarmEnabled = state
+        if state and not farming then
+            farming = true
+            task.spawn(function()
+                while getgenv().autoFarmEnabled do
+                    character = player.Character or player.CharacterAdded:Wait()
+                    humanoid = character:WaitForChild("Humanoid")
+                    local coin = getNearestCoin()
+                    if coin then
+                        moveToCoin(coin)
+                        task.wait(0.5 + math.random()) -- random nhỏ để tránh bot detection
+                    else
+                        task.wait(1)
+                    end
+                end
+                farming = false
+            end)
+        end
+    end
+})
+
