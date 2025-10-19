@@ -506,7 +506,6 @@ InfoTab:Button({
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
 
 local player = Players.LocalPlayer
@@ -515,11 +514,11 @@ local humanoid = character:WaitForChild("Humanoid")
 local rootPart = character:WaitForChild("HumanoidRootPart")
 
 local WALK_SPEED = 40
+local NORMAL_SPEED = humanoid.WalkSpeed
 
 local autoFarmEnabled = false
-local autoFarmConnection
+local autoFarmCoroutine
 
--- Hàm tìm coin gần nhất
 local function findNearestCoin()
     local closestCoin = nil
     local closestDist = math.huge
@@ -545,32 +544,26 @@ end
 
 local function walkToPosition(pos)
     humanoid.WalkSpeed = WALK_SPEED
-
+    humanoid:MoveTo(pos)
+    
     local reached = false
     local connection
-
-    local function onMoveToFinished(reachedSuccessfully)
+    connection = humanoid.MoveToFinished:Connect(function(reachedSuccessfully)
         reached = true
-        if connection then
-            connection:Disconnect()
-        end
-        humanoid.WalkSpeed = 16
-    end
-
-    connection = humanoid.MoveToFinished:Connect(onMoveToFinished)
-
-    humanoid:MoveTo(pos)
+        connection:Disconnect()
+    end)
 
     local timeout = 10
-    local start = tick()
-    while not reached and tick() - start < timeout do
-        wait(0.1)
+    local startTime = tick()
+    while not reached and tick() - startTime < timeout do
+        task.wait(0.1)
     end
 
-    if not reached and connection then
+    if not reached then
         connection:Disconnect()
-        humanoid.WalkSpeed = 16
     end
+
+    humanoid.WalkSpeed = NORMAL_SPEED
 end
 
 local function goToCoin(coin)
@@ -580,44 +573,44 @@ local function goToCoin(coin)
     local playerPos = rootPart.Position
 
     if coinPos.Y > playerPos.Y then
-        teleportToPosition(Vector3.new(coinPos.X, coinPos.Y, coinPos.Z))
+        -- Teleport lên ngang Y coin trước
+        teleportToPosition(Vector3.new(playerPos.X, coinPos.Y, playerPos.Z))
+        task.wait(0.2)
         walkToPosition(coinPos)
     else
         walkToPosition(coinPos)
     end
 end
 
--- ==== Phần Wind UI toggle ====
-
--- Giả sử bạn đã có biến MainTab từ Wind UI, ví dụ:
--- local MainTab = Window:CreateTab("Main")
-
+-- Toggle AutoFarm Wind UI
 MainTab:Toggle({
     Title = "Auto Farm",
     Default = false,
     Callback = function(state)
         autoFarmEnabled = state
-        if autoFarmEnabled then
-            -- Bật auto farm
-            autoFarmConnection = RunService.Heartbeat:Connect(function()
-                if not autoFarmEnabled then
-                    autoFarmConnection:Disconnect()
-                    humanoid.WalkSpeed = 16
-                    return
-                end
 
-                local coin = findNearestCoin()
-                if coin then
-                    goToCoin(coin)
+        if autoFarmCoroutine then
+            coroutine.close(autoFarmCoroutine)
+            autoFarmCoroutine = nil
+        end
+
+        if autoFarmEnabled then
+            autoFarmCoroutine = coroutine.create(function()
+                while autoFarmEnabled do
+                    local coin = findNearestCoin()
+                    if coin then
+                        goToCoin(coin)
+                    else
+                        task.wait(1) -- không tìm thấy coin thì đợi lâu hơn
+                    end
+                    task.wait(0.2)
                 end
+                humanoid.WalkSpeed = NORMAL_SPEED
             end)
+            coroutine.resume(autoFarmCoroutine)
         else
-            -- Tắt auto farm
-            if autoFarmConnection then
-                autoFarmConnection:Disconnect()
-                autoFarmConnection = nil
-            end
-            humanoid.WalkSpeed = 16
+            humanoid.WalkSpeed = NORMAL_SPEED
         end
     end
 })
+
