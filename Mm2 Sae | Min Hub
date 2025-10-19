@@ -150,7 +150,55 @@ coroutine.wrap(updateMurderer)()
 --------------------------------------------------
 --// Teleport / Movement Helpers with Tween + NoClip
 --------------------------------------------------
-local function findFurthestCoinContainer(pos)
+--------------------------------------------------
+--// Tìm Coin Thứ 3 Gần Nhất và Di Chuyển Đến Đó
+--------------------------------------------------
+
+local function tweenToPosition(pos)
+    local char = player.Character
+    if not char or not char:FindFirstChild("HumanoidRootPart") then return false end
+    local root = char.HumanoidRootPart
+
+    -- Bật NoClip
+    for _, part in ipairs(char:GetDescendants()) do
+        if part:IsA("BasePart") then
+            part.CanCollide = false
+        end
+    end
+
+    -- Tween đến vị trí coin (cộng thêm Y=2 để tránh va chạm sàn)
+    local target = pos + Vector3.new(0, 2, 0)
+    local tween = TweenService:Create(
+        root,
+        TweenInfo.new(1, Enum.EasingStyle.Linear),
+        {CFrame = CFrame.new(target)}
+    )
+    tween:Play()
+    tween.Completed:Wait()
+
+    -- Tắt NoClip
+    for _, part in ipairs(char:GetDescendants()) do
+        if part:IsA("BasePart") then
+            part.CanCollide = true
+        end
+    end
+
+    return true
+end
+
+local function noclipTweenToThirdNearestCoin()
+    if isTeleporting then return false end
+    isTeleporting = true
+
+    local char = player.Character
+    if not char or not char:FindFirstChild("HumanoidRootPart") then
+        isTeleporting = false
+        return false
+    end
+
+    local root = char.HumanoidRootPart
+
+    -- Cập nhật coin cache
     local now = tick()
     if now - lastCoinUpdate > CACHE_DURATION or #coinCache == 0 then
         coinCache = {}
@@ -163,47 +211,25 @@ local function findFurthestCoinContainer(pos)
         end
         lastCoinUpdate = now
     end
-    local furthest, dist = nil, -math.huge
-    for _, c in ipairs(coinCache) do
-        if c.Parent then
-            local d = (pos - c.Position).Magnitude
-            if d > dist then
-                dist = d
-                furthest = c
-            end
-        end
-    end
-    return furthest
-end
 
-local function noclipTweenTeleportToCoin()
-    if isTeleporting then return false end
-    isTeleporting = true
-    local char = player.Character
-    if not char then isTeleporting = false return false end
-    local root = char:FindFirstChild("HumanoidRootPart")
-    if not root then isTeleporting = false return false end
-    local coin = findFurthestCoinContainer(root.Position)
-    if not coin then isTeleporting = false return false end
-
-    -- NoClip On
-    for _, part in ipairs(char:GetDescendants()) do
-        if part:IsA("BasePart") then
-            part.CanCollide = false
+    -- Sắp xếp coin theo khoảng cách
+    local sortedCoins = {}
+    for _, coin in ipairs(coinCache) do
+        if coin and coin:IsDescendantOf(Workspace) then
+            local dist = (root.Position - coin.Position).Magnitude
+            table.insert(sortedCoins, {obj = coin, dist = dist})
         end
     end
 
-    local tweenInfo = TweenInfo.new(5, Enum.EasingStyle.Linear) -- 0.5 giây để bay đến coin
-    local goal = {CFrame = CFrame.new(coin.Position + Vector3.new(0, 2, 0))}
-    local tween = TweenService:Create(root, tweenInfo, goal)
-    tween:Play()
-    tween.Completed:Wait()
+    table.sort(sortedCoins, function(a, b)
+        return a.dist < b.dist
+    end)
 
-    -- NoClip Off (Optional: keep on if muốn)
-    for _, part in ipairs(char:GetDescendants()) do
-        if part:IsA("BasePart") then
-            part.CanCollide = true
-        end
+    -- Lấy coin thứ 3 gần nhất, nếu không có thì lấy coin gần nhất
+    local targetCoin = sortedCoins[3] and sortedCoins[3].obj or sortedCoins[1] and sortedCoins[1].obj
+
+    if targetCoin then
+        tweenToPosition(targetCoin.Position)
     end
 
     isTeleporting = false
@@ -224,8 +250,8 @@ MainTab:Toggle({
                 if getgenv().autoFarmEnabled and not isTeleporting then
                     local c = player.Character
                     if c and c:FindFirstChild("HumanoidRootPart") then
-                        noclipTweenTeleportToCoin()
-                        task.wait(1) -- nghỉ 1 giây mỗi lần
+                        noclipTweenToThirdNearestCoin()
+                        task.wait(1.1) -- nghỉ 1.1 giây giữa mỗi lần bay
                     end
                 end
             end)
@@ -243,8 +269,8 @@ MainTab:Button({
     Icon = "navigation",
     Color = Color3.fromRGB(0, 132, 255),
     Callback = function()
-        noclipTweenTeleportToCoin()
-        WindUI:Notify({Title = "Teleport", Content = "Đã teleport đến coin!"})
+        noclipTweenToThirdNearestCoin()
+        WindUI:Notify({Title = "Teleport", Content = "Đã bay đến coin thứ 3 gần nhất!"})
     end
 })
 
