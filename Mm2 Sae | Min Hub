@@ -507,7 +507,6 @@ InfoTab:Button({
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
-
 local player = Players.LocalPlayer
 local character = player.Character or player.CharacterAdded:Wait()
 local humanoid = character:WaitForChild("Humanoid")
@@ -519,6 +518,35 @@ local NORMAL_SPEED = humanoid.WalkSpeed
 local autoFarmEnabled = false
 local autoFarmCoroutine
 
+-- Tạo một nền ảo dưới chân người chơi để đi trên không
+local platform = Instance.new("Part")
+platform.Name = "VirtualPlatform"
+platform.Size = Vector3.new(4, 0.2, 4)
+platform.Anchored = true
+platform.CanCollide = false
+platform.Transparency = 0.5
+platform.Material = Enum.Material.Neon
+platform.Color = Color3.fromRGB(0, 255, 255)
+platform.Parent = Workspace
+
+-- Bật NoClip để người chơi không bị cản khi di chuyển qua các vật thể
+local function setNoClip(state)
+    if state then
+        local noclipConnection
+        noclipConnection = RunService.Stepped:Connect(function()
+            local char = player.Character
+            if char then
+                for _, part in ipairs(char:GetDescendants()) do
+                    if part:IsA("BasePart") then
+                        part.CanCollide = false
+                    end
+                end
+            end
+        end)
+    end
+end
+
+-- Tìm kiếm coin gần nhất
 local function findNearestCoin()
     local closestCoin = nil
     local closestDist = math.huge
@@ -538,10 +566,12 @@ local function findNearestCoin()
     return closestCoin
 end
 
+-- Di chuyển đến vị trí
 local function teleportToPosition(pos)
     rootPart.CFrame = CFrame.new(pos)
 end
 
+-- Đi bộ đến vị trí
 local function walkToPosition(pos)
     humanoid.WalkSpeed = WALK_SPEED
     humanoid:MoveTo(pos)
@@ -566,6 +596,7 @@ local function walkToPosition(pos)
     humanoid.WalkSpeed = NORMAL_SPEED
 end
 
+-- Di chuyển đến coin, tính toán nếu coin cao hơn
 local function goToCoin(coin)
     if not coin or not coin.Parent then return end
 
@@ -582,6 +613,36 @@ local function goToCoin(coin)
     end
 end
 
+-- Lắng nghe sự kiện người chơi chết để tự động tiếp tục
+character:WaitForChild("Humanoid").Died:Connect(function()
+    print("Player died, restarting script.")
+    -- Sau khi chết, tự động làm lại mọi thứ nếu cần
+    if autoFarmEnabled then
+        task.wait(1)  -- Đợi một chút cho nhân vật respawn
+        character = player.Character or player.CharacterAdded:Wait()
+        humanoid = character:WaitForChild("Humanoid")
+        rootPart = character:WaitForChild("HumanoidRootPart")
+        -- Tiếp tục lại quá trình tự động farm
+        if autoFarmCoroutine then
+            coroutine.close(autoFarmCoroutine)
+            autoFarmCoroutine = nil
+        end
+        autoFarmCoroutine = coroutine.create(function()
+            while autoFarmEnabled do
+                local coin = findNearestCoin()
+                if coin then
+                    goToCoin(coin)
+                else
+                    task.wait(1) -- không tìm thấy coin thì đợi lâu hơn
+                end
+                task.wait(0.2)
+            end
+            humanoid.WalkSpeed = NORMAL_SPEED
+        end)
+        coroutine.resume(autoFarmCoroutine)
+    end
+end)
+
 -- Toggle AutoFarm Wind UI
 MainTab:Toggle({
     Title = "Auto Farm",
@@ -595,6 +656,7 @@ MainTab:Toggle({
         end
 
         if autoFarmEnabled then
+            setNoClip(true)
             autoFarmCoroutine = coroutine.create(function()
                 while autoFarmEnabled do
                     local coin = findNearestCoin()
@@ -609,8 +671,24 @@ MainTab:Toggle({
             end)
             coroutine.resume(autoFarmCoroutine)
         else
+            setNoClip(false)
             humanoid.WalkSpeed = NORMAL_SPEED
         end
     end
 })
+
+-- Tạo nền ảo dưới chân khi auto-farm
+RunService.RenderStepped:Connect(function()
+    if autoFarmEnabled then
+        local foot = character:FindFirstChild("LeftFoot") or character:FindFirstChild("RightFoot")
+        if foot then
+            platform.CFrame = CFrame.new(foot.Position.X, foot.Position.Y - 1.5, foot.Position.Z)
+            platform.Transparency = 0.5
+        else
+            platform.Transparency = 1
+        end
+    else
+        platform.Transparency = 1
+    end
+end)
 
