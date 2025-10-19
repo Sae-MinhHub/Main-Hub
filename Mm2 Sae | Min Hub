@@ -508,7 +508,6 @@ local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
-local UserInputService = game:GetService("UserInputService")
 
 local player = Players.LocalPlayer
 
@@ -524,7 +523,7 @@ local COIN_CACHE_TIME = 1
 -- Nền ảo dưới chân người chơi
 local platform = Instance.new("Part")
 platform.Name = "VirtualPlatform"
-platform.Size = Vector3.new(4, 0.2, 4)
+platform.Size = Vector3.new(4, 0.2, 4) -- rộng 4x4, dày 0.2 stud
 platform.Anchored = true
 platform.CanCollide = true
 platform.Transparency = 0.5
@@ -557,7 +556,7 @@ end
 local function updatePlatformPosition()
     local char = player.Character
     if not char or not char.Parent then
-        platform.Transparency = 1
+        platform.Transparency = 1 -- ẩn nền khi không có character
         return
     end
 
@@ -578,7 +577,7 @@ local function updatePlatformPosition()
     end
 end
 
--- Hàm tween đến vị trí
+-- Hàm tween đến vị trí (với Y tự điều chỉnh nếu coin cao hơn)
 local function tweenToPosition(pos)
     local char = player.Character
     if not char or not char:FindFirstChild("HumanoidRootPart") then return false end
@@ -606,7 +605,7 @@ local function tweenToPosition(pos)
     return true
 end
 
--- Tìm coin thứ 3 gần nhất hoặc coin gần nhất
+-- Tìm coin thứ 3 gần nhất, nếu không có đủ thì lấy coin gần nhất
 local function findThirdNearestCoin()
     local now = tick()
     if now - lastCoinUpdate > COIN_CACHE_TIME or #coinCache == 0 then
@@ -654,7 +653,7 @@ end
 
 -- Bật/tắt auto farm
 local autoFarmConnection = nil
-local function setAutoFarm(state)
+function setAutoFarm(state)
     isAutoFarmEnabled = state
     setNoClip(state)
 
@@ -682,7 +681,7 @@ local function setAutoFarm(state)
     end
 end
 
--- Cập nhật nền ảo mỗi frame khi auto farm bật
+-- Cập nhật nền mỗi frame khi auto farm bật
 RunService.RenderStepped:Connect(function()
     if isAutoFarmEnabled then
         updatePlatformPosition()
@@ -691,16 +690,14 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
--- === Wind UI setup ===
--- Giả sử bạn đã có Wind UI setup và biến window và mainTab
+-- Giả sử bạn đã tạo UI và biến MainTab ở đây
+-- Chỉ cần thêm toggle Auto Farm vào MainTab như sau:
 
--- Ví dụ tạo Window + Main Tab (bạn thay thế bằng phần UI có sẵn nếu có)
-local Wind = loadstring(game:HttpGet("https://raw.githubusercontent.com/BabaSuji/Wind/main/source.lua"))()
-local window = Wind:CreateWindow("My Game UI")
-local mainTab = window:AddTab("Main")
-
--- Thêm toggle Auto Farm vào tab "Main"
-mainTab:AddToggle("Auto Farm", false, function(state)
-    setAutoFarm(state)
-    print("Auto Farm", state and "bật" or "tắt")
-end)
+MainTab:Toggle({
+    Title = "Auto Farm",
+    Default = false,
+    Callback = function(state)
+        setAutoFarm(state)
+        print("Auto Farm", state and "bật" or "tắt")
+    end
+})
