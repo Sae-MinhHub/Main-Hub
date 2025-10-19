@@ -506,198 +506,118 @@ InfoTab:Button({
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
-local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
 
 local player = Players.LocalPlayer
+local character = player.Character or player.CharacterAdded:Wait()
+local humanoid = character:WaitForChild("Humanoid")
+local rootPart = character:WaitForChild("HumanoidRootPart")
 
--- Flags
-local isAutoFarmEnabled = false
-local isTweening = false
+local WALK_SPEED = 40
 
--- Cache coin để tìm kiếm
-local coinCache = {}
-local lastCoinUpdate = 0
-local COIN_CACHE_TIME = 1
+local autoFarmEnabled = false
+local autoFarmConnection
 
--- Nền ảo dưới chân người chơi
-local platform = Instance.new("Part")
-platform.Name = "VirtualPlatform"
-platform.Size = Vector3.new(4, 0.2, 4) -- rộng 4x4, dày 0.2 stud
-platform.Anchored = true
-platform.CanCollide = true
-platform.Transparency = 0.5
-platform.Material = Enum.Material.Neon
-platform.Color = Color3.fromRGB(0, 255, 255)
-platform.Parent = Workspace
+-- Hàm tìm coin gần nhất
+local function findNearestCoin()
+    local closestCoin = nil
+    local closestDist = math.huge
 
--- Hàm bật/tắt NoClip
-local noclipConnection = nil
-local function setNoClip(state)
-    if noclipConnection then
-        noclipConnection:Disconnect()
-        noclipConnection = nil
-    end
-    if state then
-        noclipConnection = RunService.Stepped:Connect(function()
-            local char = player.Character
-            if char then
-                for _, part in ipairs(char:GetDescendants()) do
-                    if part:IsA("BasePart") then
-                        part.CanCollide = false
-                    end
-                end
-            end
-        end)
-    end
-end
-
--- Cập nhật vị trí nền ảo dưới chân người chơi
-local function updatePlatformPosition()
-    local char = player.Character
-    if not char or not char.Parent then
-        platform.Transparency = 1 -- ẩn nền khi không có character
-        return
-    end
-
-    local leftFoot = char:FindFirstChild("LeftFoot")
-    local rightFoot = char:FindFirstChild("RightFoot")
-    local foot = leftFoot or rightFoot
-    local root = char:FindFirstChild("HumanoidRootPart")
-
-    if foot then
-        local platformY = foot.Position.Y - 1.5
-        platform.CFrame = CFrame.new(foot.Position.X, platformY, foot.Position.Z)
-        platform.Transparency = 0.5
-    elseif root then
-        platform.CFrame = CFrame.new(root.Position.X, root.Position.Y - 1.5, root.Position.Z)
-        platform.Transparency = 0.5
-    else
-        platform.Transparency = 1
-    end
-end
-
--- Hàm tween đến vị trí (với Y tự điều chỉnh nếu coin cao hơn)
-local function tweenToPosition(pos)
-    local char = player.Character
-    if not char or not char:FindFirstChild("HumanoidRootPart") then return false end
-    local root = char.HumanoidRootPart
-
-    local targetY = pos.Y
-    if pos.Y > root.Position.Y then
-        targetY = root.Position.Y + 2
-    end
-    local targetPos = Vector3.new(pos.X, targetY, pos.Z)
-
-    for _, part in ipairs(char:GetDescendants()) do
-        if part:IsA("BasePart") then
-            part.CanCollide = false
-        end
-    end
-
-    local tweenInfo = TweenInfo.new(1, Enum.EasingStyle.Linear)
-    local tween = TweenService:Create(root, tweenInfo, {CFrame = CFrame.new(targetPos)})
-    isTweening = true
-    tween:Play()
-    tween.Completed:Wait()
-    isTweening = false
-
-    return true
-end
-
--- Tìm coin thứ 3 gần nhất, nếu không có đủ thì lấy coin gần nhất
-local function findThirdNearestCoin()
-    local now = tick()
-    if now - lastCoinUpdate > COIN_CACHE_TIME or #coinCache == 0 then
-        coinCache = {}
-        for _, obj in ipairs(Workspace:GetDescendants()) do
-            if (obj:IsA("BasePart") or obj:IsA("MeshPart")) and
-               (obj.Name:lower():find("coin") or obj.Name:lower():find("money") or
-                obj.Name:lower():find("dollar") or obj.Name:lower():find("cash")) then
-                table.insert(coinCache, obj)
-            end
-        end
-        lastCoinUpdate = now
-    end
-
-    local char = player.Character
-    if not char or not char:FindFirstChild("HumanoidRootPart") then return nil end
-    local root = char.HumanoidRootPart
-
-    local sortedCoins = {}
-    for _, coin in ipairs(coinCache) do
-        if coin and coin:IsDescendantOf(Workspace) then
-            local dist = (root.Position - coin.Position).Magnitude
-            table.insert(sortedCoins, {obj = coin, dist = dist})
-        end
-    end
-    table.sort(sortedCoins, function(a,b) return a.dist < b.dist end)
-
-    if #sortedCoins >= 3 then
-        return sortedCoins[3].obj
-    elseif #sortedCoins > 0 then
-        return sortedCoins[1].obj
-    else
-        return nil
-    end
-end
-
--- Auto farm chính
-local function autoFarm()
-    if isTweening then return end
-    local coin = findThirdNearestCoin()
-    if coin then
-        tweenToPosition(coin.Position)
-    end
-end
-
--- Bật/tắt auto farm
-local autoFarmConnection = nil
-function setAutoFarm(state)
-    isAutoFarmEnabled = state
-    setNoClip(state)
-
-    if autoFarmConnection then
-        autoFarmConnection:Disconnect()
-        autoFarmConnection = nil
-    end
-
-    if state then
-        autoFarmConnection = RunService.Heartbeat:Connect(function()
-            if isAutoFarmEnabled then
-                autoFarm()
-            end
-        end)
-    else
-        platform.Transparency = 1
-        local char = player.Character
-        if char then
-            for _, part in ipairs(char:GetDescendants()) do
-                if part:IsA("BasePart") then
-                    part.CanCollide = true
-                end
+    for _, obj in ipairs(Workspace:GetDescendants()) do
+        if (obj:IsA("BasePart") or obj:IsA("MeshPart")) and
+           (obj.Name:lower():find("coin") or obj.Name:lower():find("money") or
+            obj.Name:lower():find("dollar") or obj.Name:lower():find("cash")) then
+            local dist = (rootPart.Position - obj.Position).Magnitude
+            if dist < closestDist then
+                closestDist = dist
+                closestCoin = obj
             end
         end
     end
+
+    return closestCoin
 end
 
--- Cập nhật nền mỗi frame khi auto farm bật
-RunService.RenderStepped:Connect(function()
-    if isAutoFarmEnabled then
-        updatePlatformPosition()
-    else
-        platform.Transparency = 1
-    end
-end)
+local function teleportToPosition(pos)
+    rootPart.CFrame = CFrame.new(pos)
+end
 
--- Giả sử bạn đã tạo UI và biến MainTab ở đây
--- Chỉ cần thêm toggle Auto Farm vào MainTab như sau:
+local function walkToPosition(pos)
+    humanoid.WalkSpeed = WALK_SPEED
+
+    local reached = false
+    local connection
+
+    local function onMoveToFinished(reachedSuccessfully)
+        reached = true
+        if connection then
+            connection:Disconnect()
+        end
+        humanoid.WalkSpeed = 16
+    end
+
+    connection = humanoid.MoveToFinished:Connect(onMoveToFinished)
+
+    humanoid:MoveTo(pos)
+
+    local timeout = 10
+    local start = tick()
+    while not reached and tick() - start < timeout do
+        wait(0.1)
+    end
+
+    if not reached and connection then
+        connection:Disconnect()
+        humanoid.WalkSpeed = 16
+    end
+end
+
+local function goToCoin(coin)
+    if not coin or not coin.Parent then return end
+
+    local coinPos = coin.Position
+    local playerPos = rootPart.Position
+
+    if coinPos.Y > playerPos.Y then
+        teleportToPosition(Vector3.new(coinPos.X, coinPos.Y, coinPos.Z))
+        walkToPosition(coinPos)
+    else
+        walkToPosition(coinPos)
+    end
+end
+
+-- ==== Phần Wind UI toggle ====
+
+-- Giả sử bạn đã có biến MainTab từ Wind UI, ví dụ:
+-- local MainTab = Window:CreateTab("Main")
 
 MainTab:Toggle({
     Title = "Auto Farm",
     Default = false,
     Callback = function(state)
-        setAutoFarm(state)
-        print("Auto Farm", state and "bật" or "tắt")
+        autoFarmEnabled = state
+        if autoFarmEnabled then
+            -- Bật auto farm
+            autoFarmConnection = RunService.Heartbeat:Connect(function()
+                if not autoFarmEnabled then
+                    autoFarmConnection:Disconnect()
+                    humanoid.WalkSpeed = 16
+                    return
+                end
+
+                local coin = findNearestCoin()
+                if coin then
+                    goToCoin(coin)
+                end
+            end)
+        else
+            -- Tắt auto farm
+            if autoFarmConnection then
+                autoFarmConnection:Disconnect()
+                autoFarmConnection = nil
+            end
+            humanoid.WalkSpeed = 16
+        end
     end
 })
