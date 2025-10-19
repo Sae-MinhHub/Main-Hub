@@ -1,30 +1,24 @@
 loadstring(game:HttpGet("https://pastefy.app/I6mDWjAC/raw",true))()
 
--- Anti-AFK LocalScript (gắn vào StarterPlayer -> StarterPlayerScripts)
 local player = game.Players.LocalPlayer
 local userInputService = game:GetService("UserInputService")
 local mouse = game:GetService("Players").LocalPlayer:GetMouse()
 
-local moveInterval = 1140 -- Di chuyển chuột và nhấn phím mỗi 10 giây
+local moveInterval = 1140
 
--- Hàm di chuyển chuột nhẹ
 local function moveMouse()
+    local randomX = math.random(-10, 10)
     local randomY = math.random(-10, 10)
-    local randomY = math.random(+10, 10)
     mouse.Move:Fire(randomX, randomY)
 end
 
--- Hàm nhấn phím nhẹ
 local function pressKey()
     userInputService.InputBegan:Fire(Enum.KeyCode.W, false)
 end
 
--- Bắt đầu chạy cả hai hành động
 while true do
     if player.Character then
-        -- Di chuyển chuột
         moveMouse()
-        -- Nhấn phím
         pressKey()
     end
     wait(moveInterval)
