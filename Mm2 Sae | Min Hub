@@ -147,45 +147,7 @@ local function updateMurderer()
 end
 coroutine.wrap(updateMurderer)()
 
---------------------------------------------------
---// Teleport / Movement Helpers with Tween + NoClip
---------------------------------------------------
---------------------------------------------------
---// Tìm Coin Thứ 3 Gần Nhất và Di Chuyển Đến Đó
---------------------------------------------------
-
-local function tweenToPosition(pos)
-    local char = player.Character
-    if not char or not char:FindFirstChild("HumanoidRootPart") then return false end
-    local root = char.HumanoidRootPart
-
-    -- Bật NoClip
-    for _, part in ipairs(char:GetDescendants()) do
-        if part:IsA("BasePart") then
-            part.CanCollide = false
-        end
-    end
-
-    -- Tween đến vị trí coin (cộng thêm Y=2 để tránh va chạm sàn)
-    local target = pos + Vector3.new(0, 2, 0)
-    local tween = TweenService:Create(
-        root,
-        TweenInfo.new(1, Enum.EasingStyle.Linear),
-        {CFrame = CFrame.new(target)}
-    )
-    tween:Play()
-    tween.Completed:Wait()
-
-    -- Tắt NoClip
-    for _, part in ipairs(char:GetDescendants()) do
-        if part:IsA("BasePart") then
-            part.CanCollide = true
-        end
-    end
-
-    return true
-end
-
+-- Function to move with NoClip at a speed of 40 and jump if coins are on different Y levels, fix small Y differences
 local function noclipTweenToThirdNearestCoin()
     if isTeleporting then return false end
     isTeleporting = true
@@ -198,7 +160,7 @@ local function noclipTweenToThirdNearestCoin()
 
     local root = char.HumanoidRootPart
 
-    -- Cập nhật coin cache
+    -- Update coin cache
     local now = tick()
     if now - lastCoinUpdate > CACHE_DURATION or #coinCache == 0 then
         coinCache = {}
@@ -212,7 +174,7 @@ local function noclipTweenToThirdNearestCoin()
         lastCoinUpdate = now
     end
 
-    -- Sắp xếp coin theo khoảng cách
+    -- Sort coins by proximity
     local sortedCoins = {}
     for _, coin in ipairs(coinCache) do
         if coin and coin:IsDescendantOf(Workspace) then
@@ -225,11 +187,56 @@ local function noclipTweenToThirdNearestCoin()
         return a.dist < b.dist
     end)
 
-    -- Lấy coin thứ 3 gần nhất, nếu không có thì lấy coin gần nhất
+    -- Get the third nearest coin, if available
     local targetCoin = sortedCoins[3] and sortedCoins[3].obj or sortedCoins[1] and sortedCoins[1].obj
+    if not targetCoin then
+        isTeleporting = false
+        return false
+    end
 
-    if targetCoin then
-        tweenToPosition(targetCoin.Position)
+    -- Check if the Y positions of the target coin and player are the same
+    local targetCoinPosition = targetCoin.Position
+    if math.abs(root.Position.Y - targetCoinPosition.Y) > 1 then
+        -- If the Y position is different, jump to the correct position
+        local jumpHeight = Vector3.new(0, 50, 0) -- Adjust jump height
+        root.CFrame = CFrame.new(targetCoinPosition + jumpHeight) -- Simulate jump by adding to Y position
+        task.wait(0.2) -- Wait for the jump to finish
+    end
+
+    -- Move to the target coin position with a speed of 40
+    local targetPosition = targetCoin.Position
+    local direction = (targetPosition - root.Position).unit
+    local targetVelocity = direction * 40  -- Speed of 40 units per second
+
+    -- Disable collisions (NoClip)
+    for _, part in ipairs(char:GetDescendants()) do
+        if part:IsA("BasePart") then
+            part.CanCollide = false
+        end
+    end
+
+    -- Create and apply tween to move character to target position with the set speed
+    local tweenInfo = TweenInfo.new(1, Enum.EasingStyle.Linear)
+    local goal = {CFrame = CFrame.new(root.Position + targetVelocity * 0.1)}  -- Move a little every frame for speed
+    local tween = TweenService:Create(root, tweenInfo, goal)
+    tween:Play()
+    tween.Completed:Wait()
+
+    -- After the move, check if Y is still off by a small margin (less than 1 stud)
+    local distanceY = math.abs(root.Position.Y - targetCoinPosition.Y)
+    if distanceY > 0.1 then
+        -- If Y still differs, adjust Y by tweening directly to the correct Y
+        local newTargetPosition = Vector3.new(targetCoinPosition.X, targetCoinPosition.Y, targetCoinPosition.Z)
+        local finalTween = TweenService:Create(root, tweenInfo, {CFrame = CFrame.new(newTargetPosition)})
+        finalTween:Play()
+        finalTween.Completed:Wait()
+    end
+
+    -- Enable collisions again after the move
+    for _, part in ipairs(char:GetDescendants()) do
+        if part:IsA("BasePart") then
+            part.CanCollide = true
+        end
     end
 
     isTeleporting = false
