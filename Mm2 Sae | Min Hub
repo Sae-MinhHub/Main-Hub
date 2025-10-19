@@ -504,7 +504,6 @@ InfoTab:Button({
     end
 })
 
--- Auto Farm Coin - Safer Version Using Humanoid:MoveTo()
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local RunService = game:GetService("RunService")
@@ -513,9 +512,39 @@ local player = Players.LocalPlayer
 local character = player.Character or player.CharacterAdded:Wait()
 local humanoid = character:WaitForChild("Humanoid")
 
+-- Set tốc độ người chơi
+humanoid.WalkSpeed = 40
+
 getgenv().autoFarmEnabled = false
 local farming = false
+local platform = nil
+local noclipConnection = nil
 
+-- Tạo nền ảo
+local function createPlatform()
+    if platform and platform.Parent then return end
+
+    platform = Instance.new("Part")
+    platform.Name = "FakePlatform"
+    platform.Size = Vector3.new(6, 1, 6)
+    platform.Anchored = true
+    platform.CanCollide = true
+    platform.Transparency = 0.5
+    platform.Color = Color3.fromRGB(80, 80, 80)
+    platform.Material = Enum.Material.ForceField
+    platform.Parent = Workspace
+end
+
+-- Di chuyển nền dưới chân người chơi
+local function updatePlatform()
+    if not platform then return end
+    local root = character:FindFirstChild("HumanoidRootPart")
+    if root then
+        platform.Position = Vector3.new(root.Position.X, root.Position.Y - 3.1, root.Position.Z)
+    end
+end
+
+-- Tìm coin gần nhất
 local function getNearestCoin()
     local root = character:FindFirstChild("HumanoidRootPart")
     if not root then return nil end
@@ -539,34 +568,71 @@ local function getNearestCoin()
     return nearestCoin
 end
 
+-- Di chuyển tới coin
 local function moveToCoin(coin)
-    if not coin or not character or not character:FindFirstChild("HumanoidRootPart") then return end
+    if not coin then return end
+    local root = character:FindFirstChild("HumanoidRootPart")
+    if not root then return end
+
+    -- Nếu coin ở cao hơn, teleport lên
+    if coin.Position.Y - root.Position.Y > 6 then
+        root.CFrame = CFrame.new(root.Position.X, coin.Position.Y + 5, root.Position.Z)
+        task.wait(0.15)
+    end
+
     humanoid:MoveTo(coin.Position)
-    humanoid.MoveToFinished:Wait()
+    humanoid.MoveToFinished:Wait(2) -- chờ 2s hoặc đến khi xong
 end
 
+-- Bật / tắt NoClip
+local function setNoClip(state)
+    local char = player.Character
+    if not char then return end
+
+    for _, part in ipairs(char:GetDescendants()) do
+        if part:IsA("BasePart") then
+            part.CanCollide = not state
+        end
+    end
+end
+
+-- Toggle Auto Farm
 MainTab:Toggle({
-    Title = "Auto Farm Coin (Safe MoveTo)",
+    Title = "Auto Farm Coin (Smart + NoClip + Safe)",
     Default = false,
     Callback = function(state)
         getgenv().autoFarmEnabled = state
+
         if state and not farming then
             farming = true
+            createPlatform()
+            setNoClip(true) -- bật noclip
+
             task.spawn(function()
                 while getgenv().autoFarmEnabled do
                     character = player.Character or player.CharacterAdded:Wait()
                     humanoid = character:WaitForChild("Humanoid")
+                    humanoid.WalkSpeed = 40
+
+                    updatePlatform()
+
                     local coin = getNearestCoin()
                     if coin then
                         moveToCoin(coin)
-                        task.wait(0.5 + math.random()) -- random nhỏ để tránh bot detection
-                    else
-                        task.wait(1)
                     end
+
+                    task.wait(0.25)
                 end
+                -- khi tắt auto farm thì tắt noclip và dọn platform
+                setNoClip(false)
+                if platform then platform:Destroy() end
                 farming = false
             end)
+        elseif not state then
+            -- tắt auto farm, đảm bảo tắt noclip và dọn platform nếu lỡ còn
+            setNoClip(false)
+            if platform then platform:Destroy() end
+            farming = false
         end
     end
 })
-
