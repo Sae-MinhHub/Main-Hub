@@ -505,134 +505,201 @@ InfoTab:Button({
 })
 
 local Players = game:GetService("Players")
-local Workspace = game:GetService("Workspace")
 local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+local Workspace = game:GetService("Workspace")
 
 local player = Players.LocalPlayer
 
-local character = player.Character or player.CharacterAdded:Wait()
-local humanoid = character:WaitForChild("Humanoid")
+-- Flags
+local isAutoFarmEnabled = false
+local isTweening = false
 
--- Set tốc độ người chơi
-humanoid.WalkSpeed = 40
+-- Cache coin để tìm kiếm
+local coinCache = {}
+local lastCoinUpdate = 0
+local COIN_CACHE_TIME = 1
 
-getgenv().autoFarmEnabled = false
-local farming = false
-local platform = nil
+-- Nền ảo dưới chân người chơi
+local platform = Instance.new("Part")
+platform.Name = "VirtualPlatform"
+platform.Size = Vector3.new(4, 0.2, 4) -- rộng 4x4, dày 0.2 stud
+platform.Anchored = true
+platform.CanCollide = true
+platform.Transparency = 0.5
+platform.Material = Enum.Material.Neon
+platform.Color = Color3.fromRGB(0, 255, 255)
+platform.Parent = Workspace
 
--- Tạo nền ảo nếu chưa có
-local function createPlatform()
-    if platform and platform.Parent then return end
-
-    platform = Instance.new("Part")
-    platform.Name = "FakePlatform"
-    platform.Size = Vector3.new(6, 1, 6)
-    platform.Anchored = true
-    platform.CanCollide = true
-    platform.Transparency = 0.5
-    platform.Color = Color3.fromRGB(80, 80, 80)
-    platform.Material = Enum.Material.ForceField
-    platform.Parent = Workspace
-end
-
--- Cập nhật vị trí nền ảo luôn nằm dưới chân người chơi, cách chân 3.5 studs để không kẹt
-local function updatePlatform()
-    if not platform then return end
-    local root = character:FindFirstChild("HumanoidRootPart")
-    if root then
-        local pos = root.Position
-        platform.Position = Vector3.new(pos.X, pos.Y - 3.5, pos.Z)
+-- Hàm bật/tắt NoClip
+local noclipConnection = nil
+local function setNoClip(state)
+    if noclipConnection then
+        noclipConnection:Disconnect()
+        noclipConnection = nil
+    end
+    if state then
+        noclipConnection = RunService.Stepped:Connect(function()
+            local char = player.Character
+            if char then
+                for _, part in ipairs(char:GetDescendants()) do
+                    if part:IsA("BasePart") then
+                        part.CanCollide = false
+                    end
+                end
+            end
+        end)
     end
 end
 
--- Tìm coin gần nhất
-local function getNearestCoin()
-    local root = character:FindFirstChild("HumanoidRootPart")
-    if not root then return nil end
+-- Cập nhật vị trí nền ảo dưới chân người chơi
+local function updatePlatformPosition()
+    local char = player.Character
+    if not char or not char.Parent then
+        platform.Transparency = 1 -- ẩn nền khi không có character
+        return
+    end
 
-    local nearestCoin = nil
-    local shortestDistance = math.huge
+    local leftFoot = char:FindFirstChild("LeftFoot")
+    local rightFoot = char:FindFirstChild("RightFoot")
+    local foot = leftFoot or rightFoot
+    local root = char:FindFirstChild("HumanoidRootPart")
 
-    for _, obj in ipairs(Workspace:GetDescendants()) do
-        if (obj:IsA("BasePart") or obj:IsA("MeshPart")) and 
-            (obj.Name:lower():find("coin") or obj.Name:lower():find("money") or 
-             obj.Name:lower():find("cash") or obj.Name:lower():find("dollar")) then
+    if foot then
+        -- Đặt nền 1.5 stud dưới chân (0.5 stud từ tâm bàn chân + 1 stud yêu cầu)
+        local platformY = foot.Position.Y - 1.5
+        platform.CFrame = CFrame.new(foot.Position.X, platformY, foot.Position.Z)
+        platform.Transparency = 0.5
+    elseif root then
+        platform.CFrame = CFrame.new(root.Position.X, root.Position.Y - 1.5, root.Position.Z)
+        platform.Transparency = 0.5
+    else
+        platform.Transparency = 1
+    end
+end
 
-            local dist = (obj.Position - root.Position).Magnitude
-            if dist < shortestDistance then
-                shortestDistance = dist
-                nearestCoin = obj
+-- Hàm tween đến vị trí (với Y tự điều chỉnh nếu coin cao hơn)
+local function tweenToPosition(pos)
+    local char = player.Character
+    if not char or not char:FindFirstChild("HumanoidRootPart") then return false end
+    local root = char.HumanoidRootPart
+
+    -- Tính vị trí đích, nếu coin cao hơn player thì chỉ đi bằng y của player + 2 để tránh bị bay quá cao
+    local targetY = pos.Y
+    if pos.Y > root.Position.Y then
+        targetY = root.Position.Y + 2
+    end
+    local targetPos = Vector3.new(pos.X, targetY, pos.Z)
+
+    -- Bật noClip (đảm bảo trước tween)
+    for _, part in ipairs(char:GetDescendants()) do
+        if part:IsA("BasePart") then
+            part.CanCollide = false
+        end
+    end
+
+    local tweenInfo = TweenInfo.new(1, Enum.EasingStyle.Linear)
+    local tween = TweenService:Create(root, tweenInfo, {CFrame = CFrame.new(targetPos)})
+    isTweening = true
+    tween:Play()
+    tween.Completed:Wait()
+    isTweening = false
+
+    return true
+end
+
+-- Tìm coin thứ 3 gần nhất, nếu không có đủ thì lấy coin gần nhất
+local function findThirdNearestCoin()
+    local now = tick()
+    if now - lastCoinUpdate > COIN_CACHE_TIME or #coinCache == 0 then
+        coinCache = {}
+        for _, obj in ipairs(Workspace:GetDescendants()) do
+            if (obj:IsA("BasePart") or obj:IsA("MeshPart")) and
+               (obj.Name:lower():find("coin") or obj.Name:lower():find("money") or
+                obj.Name:lower():find("dollar") or obj.Name:lower():find("cash")) then
+                table.insert(coinCache, obj)
+            end
+        end
+        lastCoinUpdate = now
+    end
+
+    local char = player.Character
+    if not char or not char:FindFirstChild("HumanoidRootPart") then return nil end
+    local root = char.HumanoidRootPart
+
+    local sortedCoins = {}
+    for _, coin in ipairs(coinCache) do
+        if coin and coin:IsDescendantOf(Workspace) then
+            local dist = (root.Position - coin.Position).Magnitude
+            table.insert(sortedCoins, {obj = coin, dist = dist})
+        end
+    end
+    table.sort(sortedCoins, function(a,b) return a.dist < b.dist end)
+
+    if #sortedCoins >= 3 then
+        return sortedCoins[3].obj
+    elseif #sortedCoins > 0 then
+        return sortedCoins[1].obj
+    else
+        return nil
+    end
+end
+
+-- Auto farm chính
+local function autoFarm()
+    if isTweening then return end
+    local coin = findThirdNearestCoin()
+    if coin then
+        tweenToPosition(coin.Position)
+    end
+end
+
+-- Bật/tắt auto farm
+local autoFarmConnection = nil
+local function setAutoFarm(state)
+    isAutoFarmEnabled = state
+    setNoClip(state) -- bật/tắt noClip cùng auto farm
+
+    if autoFarmConnection then
+        autoFarmConnection:Disconnect()
+        autoFarmConnection = nil
+    end
+
+    if state then
+        autoFarmConnection = RunService.Heartbeat:Connect(function()
+            if isAutoFarmEnabled then
+                autoFarm()
+            end
+        end)
+    else
+        -- Khi tắt auto farm thì ẩn nền và bật lại va chạm
+        platform.Transparency = 1
+        local char = player.Character
+        if char then
+            for _, part in ipairs(char:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    part.CanCollide = true
+                end
             end
         end
     end
-
-    return nearestCoin
 end
 
--- Di chuyển tới coin, nếu coin cao hơn, bay lên đủ để tới, sau đó di chuyển tới coin bằng MoveTo
-local function moveToCoin(coin)
-    if not coin then return end
-    local root = character:FindFirstChild("HumanoidRootPart")
-    if not root then return end
-
-    local heightDiff = coin.Position.Y - root.Position.Y
-    if heightDiff > 6 then
-        root.CFrame = CFrame.new(root.Position.X, coin.Position.Y + 5, root.Position.Z)
-        task.wait(0.15)
+-- Cập nhật vị trí nền mỗi frame khi auto farm bật
+RunService.RenderStepped:Connect(function()
+    if isAutoFarmEnabled then
+        updatePlatformPosition()
+    else
+        platform.Transparency = 1
     end
+end)
 
-    humanoid:MoveTo(coin.Position)
-    humanoid.MoveToFinished:Wait(2)
-end
-
--- Bật / tắt NoClip bằng việc set CanCollide của từng part trong nhân vật
-local function setNoClip(state)
-    local char = player.Character
-    if not char then return end
-
-    for _, part in ipairs(char:GetDescendants()) do
-        if part:IsA("BasePart") then
-            part.CanCollide = not state
-        end
+-- === EXAMPLE: Toggle auto farm bằng phím "F" ===
+local UserInputService = game:GetService("UserInputService")
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if input.KeyCode == Enum.KeyCode.F then
+        setAutoFarm(not isAutoFarmEnabled)
+        print("Auto farm", isAutoFarmEnabled and "bật" or "tắt")
     end
-end
-
--- Auto Farm Toggle (ví dụ dùng WindUI toggle)
-MainTab:Toggle({
-    Title = "Auto Farm Coin (1s delay + NoClip + Platform)",
-    Default = false,
-    Callback = function(state)
-        getgenv().autoFarmEnabled = state
-
-        if state and not farming then
-            farming = true
-            character = player.Character or player.CharacterAdded:Wait()
-            humanoid = character:WaitForChild("Humanoid")
-            humanoid.WalkSpeed = 40
-
-            createPlatform()
-            setNoClip(true)
-
-            task.spawn(function()
-                while getgenv().autoFarmEnabled do
-                    updatePlatform()
-
-                    local coin = getNearestCoin()
-                    if coin then
-                        moveToCoin(coin)
-                    end
-
-                    task.wait(1) -- chờ 1 giây giữa mỗi lần đi
-                end
-                setNoClip(false)
-                if platform then platform:Destroy() end
-                farming = false
-            end)
-        elseif not state then
-            setNoClip(false)
-            if platform then platform:Destroy() end
-            farming = false
-        end
-    end
-})
-
+end)
