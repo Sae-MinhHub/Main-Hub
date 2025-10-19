@@ -509,6 +509,7 @@ local Workspace = game:GetService("Workspace")
 local RunService = game:GetService("RunService")
 
 local player = Players.LocalPlayer
+
 local character = player.Character or player.CharacterAdded:Wait()
 local humanoid = character:WaitForChild("Humanoid")
 
@@ -596,7 +597,7 @@ local function setNoClip(state)
     end
 end
 
--- Auto Farm Toggle
+-- Auto Farm Toggle (ví dụ dùng WindUI toggle)
 MainTab:Toggle({
     Title = "Auto Farm Coin (1s delay + NoClip + Platform)",
     Default = false,
@@ -605,15 +606,15 @@ MainTab:Toggle({
 
         if state and not farming then
             farming = true
+            character = player.Character or player.CharacterAdded:Wait()
+            humanoid = character:WaitForChild("Humanoid")
+            humanoid.WalkSpeed = 40
+
             createPlatform()
             setNoClip(true)
 
             task.spawn(function()
                 while getgenv().autoFarmEnabled do
-                    character = player.Character or player.CharacterAdded:Wait()
-                    humanoid = character:WaitForChild("Humanoid")
-                    humanoid.WalkSpeed = 40
-
                     updatePlatform()
 
                     local coin = getNearestCoin()
@@ -634,3 +635,4 @@ MainTab:Toggle({
         end
     end
 })
+
