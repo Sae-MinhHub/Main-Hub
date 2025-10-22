@@ -1,25 +1,60 @@
-loadstring(game:HttpGet("https://pastefy.app/caSFGIab/raw",true))()
+--// Services
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
 
-local player = game.Players.LocalPlayer
-local userInputService = game:GetService("UserInputService")
-local mouse = game:GetService("Players").LocalPlayer:GetMouse()
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
 
-local moveInterval = 1140
+--// Biến trạng thái nút
+local toggleState = false
 
-local function moveMouse()
-    local randomX = math.random(-10, 10)
-    local randomY = math.random(-10, 10)
-    mouse.Move:Fire(randomX, randomY)
-end
+--// Tạo ScreenGui
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "ScriptFixingGui"
+screenGui.ResetOnSpawn = false
+screenGui.Parent = playerGui
 
-local function pressKey()
-    userInputService.InputBegan:Fire(Enum.KeyCode.W, false)
-end
+--// Tạo Frame chính
+local mainFrame = Instance.new("Frame")
+mainFrame.Size = UDim2.new(0, 250, 0, 120)
+mainFrame.Position = UDim2.new(0.5, -125, 0.5, -60)
+mainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+mainFrame.BorderSizePixel = 0
+mainFrame.Active = true
+mainFrame.Draggable = true -- Kéo được
+mainFrame.Parent = screenGui
 
-while true do
-    if player.Character then
-        moveMouse()
-        pressKey()
+--// Tạo tiêu đề
+local titleLabel = Instance.new("TextLabel")
+titleLabel.Size = UDim2.new(1, 0, 0, 30)
+titleLabel.BackgroundTransparency = 1
+titleLabel.Text = "Script Fixing"
+titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+titleLabel.Font = Enum.Font.GothamBold
+titleLabel.TextSize = 18
+titleLabel.Parent = mainFrame
+
+--// Tạo nút ON/OFF
+local toggleButton = Instance.new("TextButton")
+toggleButton.Size = UDim2.new(0, 120, 0, 40)
+toggleButton.Position = UDim2.new(0.5, -60, 0, 50)
+toggleButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+toggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+toggleButton.Font = Enum.Font.GothamBold
+toggleButton.TextSize = 16
+toggleButton.Text = "OFF"
+toggleButton.Parent = mainFrame
+
+--// Nút bấm logic
+toggleButton.MouseButton1Click:Connect(function()
+    toggleState = not toggleState
+    toggleButton.Text = toggleState and "ON" or "OFF"
+
+    -- Thêm logic khi bật/tắt tại đây
+    if toggleState then
+        print("Script Bật!")
+    else
+        print("Script Tắt!")
     end
-    wait(moveInterval)
-end
+end)
