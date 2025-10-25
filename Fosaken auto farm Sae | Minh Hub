@@ -1,1 +1,26 @@
+--fosaken auto farm :) v1
 loadstring(game:HttpGet("https://pastefy.app/K8kAwGHB/raw",true))()
+
+local player = game.Players.LocalPlayer
+local userInputService = game:GetService("UserInputService")
+local mouse = game:GetService("Players").LocalPlayer:GetMouse()
+
+local moveInterval = 1140
+
+local function moveMouse()
+    local randomX = math.random(-10, 10)
+    local randomY = math.random(-10, 10)
+    mouse.Move:Fire(randomX, randomY)
+end
+
+local function pressKey()
+    userInputService.InputBegan:Fire(Enum.KeyCode.W, false)
+end
+
+while true do
+    if player.Character then
+        moveMouse()
+        pressKey()
+    end
+    wait(moveInterval)
+end
